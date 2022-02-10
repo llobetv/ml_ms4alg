@@ -1,3 +1,5 @@
+Add add_end_clip from original repository, allow assymetric waveform extraction
+
 # ml_ms4alg
 
 Electrophysiology tools
