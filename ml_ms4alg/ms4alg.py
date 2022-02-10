@@ -67,13 +67,11 @@ def get_channel_neighborhood(m,Geom,*,adjacency_radius):
     inds=np.sort(inds)
     return inds.ravel()
 
-def subsample_array(X,max_num,seed=0):
+def subsample_array(X,max_num):
     if X.size==0:
         return X
     if max_num>=len(X):
         return X
-    if seed is not None:
-        np.random.seed(seed)
     inds=np.random.choice(len(X), max_num, replace=False)
     return X[inds]
 
@@ -118,16 +116,16 @@ def compute_sliding_maximum(X,radius):
         ret=np.maximum(ret,np.roll(X,dt))
     return ret
 
-def extract_clips(data,*,times,clip_size):
+def extract_clips(data, *, times, clip_size, add_end_clip=0):
     M=data.shape[0]
     T=clip_size
     L=len(times)
     Tmid = int(np.floor((T + 1) / 2) - 1);
-    clips=np.zeros((M,T,L),dtype='float32')
+    clips=np.zeros((M, T+add_end_clip, L), dtype='float32')
     for j in range(L):
         t1=times[j]-Tmid
-        t2=t1+clip_size
-        clips[:,:,j]=data[:,t1:t2]
+        t2=t1+clip_size+add_end_clip
+        clips[:, :, j]=data[:, t1:t2]
     return clips
 
 def remove_zero_features(X):
@@ -135,10 +133,8 @@ def remove_zero_features(X):
     features_to_use=np.where(maxvals>0)[0]
     return X[features_to_use,:]
 
-def cluster(features,*,npca,seed=0):
+def cluster(features,*,npca):
     num_events_for_pca=np.minimum(features.shape[1],1000)
-    if seed is not None:
-        np.random.seed(seed)
     subsample_inds=np.random.choice(features.shape[1], num_events_for_pca, replace=False)
     u,s,vt=np.linalg.svd(features[:,subsample_inds])
     features2=(u.transpose())[0:npca,:]@features
@@ -224,46 +220,45 @@ def extract_clips_from_timeseries_model(X,times,*,clip_size,nbhd_channels):
     return clips
 '''
 
-def compute_event_features_from_timeseries_model(X,times,*,nbhd_channels,clip_size,max_num_clips_for_pca,num_features,chunk_infos):
+def compute_event_features_from_timeseries_model(X, times, *, nbhd_channels, clip_size, max_num_clips_for_pca, num_features, chunk_infos, add_end_clip=0):
     if times.size == 0:
         return np.array([]) 
 
     N=X.numTimepoints()
-    #X_neigh=X.getChunk(t1=0,t2=N,channels=nbhd_channels)
-    M_neigh=len(nbhd_channels)
+    #X_neigh=X.getChunk(t1=0, t2=N, channels=nbhd_channels)
+    M_neigh = len(nbhd_channels)
 
-    padding=clip_size*10
+    padding = (clip_size+add_end_clip) * 10
 
     # Subsample and extract clips for pca
-    times_for_pca=subsample_array(times,max_num_clips_for_pca)
-    #clips_for_pca=extract_clips_from_timeseries_model(X,times_for_pca,clip_size=clip_size,nbhd_channels=nbhd_channels)
-    clips_for_pca=np.zeros((M_neigh,clip_size,len(times_for_pca)))
+    times_for_pca=subsample_array(times, max_num_clips_for_pca)
+    #clips_for_pca=extract_clips_from_timeseries_model(X, times_for_pca, clip_size=clip_size, nbhd_channels=nbhd_channels)
+    clips_for_pca=np.zeros((M_neigh,  clip_size+add_end_clip,  len(times_for_pca)))
     for ii in range(len(chunk_infos)):
         chunk0=chunk_infos[ii]
         inds0=np.where((chunk0['t1']<=times_for_pca)&(times_for_pca<chunk0['t2']))[0]
         if len(inds0)>0:
-            X0=X.getChunk(t1=chunk0['t1']-padding,t2=chunk0['t2']+padding,channels=nbhd_channels)
+            X0=X.getChunk(t1=chunk0['t1']-padding, t2=chunk0['t2']+padding, channels=nbhd_channels)
             times0=times_for_pca[inds0]
-            clips0=extract_clips(X0,times=times0-(chunk0['t1']-padding),clip_size=clip_size)
-            clips_for_pca[:,:,inds0]=clips0
+            clips0=extract_clips(X0, times=times0-(chunk0['t1']-padding), clip_size=clip_size, add_end_clip=add_end_clip)
+            clips_for_pca[:, :, inds0]=clips0
 
     # Compute the principal components
-    # use twice as many features, because of branch method
-    principal_components=compute_principal_components(clips_for_pca.reshape((M_neigh*clip_size,len(times_for_pca))),num_features*2) # (MT x 2F)
+    # use twice as many features,  because of branch method
+    principal_components=compute_principal_components(clips_for_pca.reshape((M_neigh*(clip_size+add_end_clip), len(times_for_pca))), num_features*2) # (MT x 2F)
 
     # Compute the features for all the clips
-    features=np.zeros((num_features*2,len(times)))
+    features=np.zeros((num_features*2, len(times)))
     for ii in range(len(chunk_infos)):
         chunk0=chunk_infos[ii]
-        X0=X.getChunk(t1=chunk0['t1']-padding,t2=chunk0['t2']+padding,channels=nbhd_channels)
+        X0=X.getChunk(t1=chunk0['t1']-padding, t2=chunk0['t2']+padding, channels=nbhd_channels)
         inds0=np.where((chunk0['t1']<=times)&(times<chunk0['t2']))[0]
         times0=times[inds0]
-        clips0=extract_clips(X0,times=times0-(chunk0['t1']-padding),clip_size=clip_size)
-        features0=principal_components.transpose() @ clips0.reshape((M_neigh*clip_size,len(times0))) # (2F x MT) @ (MT x L0) -> (2F x L0)   
-        features[:,inds0]=features0
+        clips0=extract_clips(X0, times=times0-(chunk0['t1']-padding), clip_size=clip_size, add_end_clip=add_end_clip)
+        features0=principal_components.transpose() @ clips0.reshape((M_neigh*(clip_size+add_end_clip), len(times0))) # (2F x MT) @ (MT x L0) -> (2F x L0)   
+        features[:, inds0]=features0
 
     return features
-
     #clips_for_pca=extract_clips(X_neigh,times_for_pca,clip_size) # (MxTxL0)
     #clips_for_pca=clips_for_pca.reshape((M_neigh*clip_size,len(times_for_pca))) # vectorized (MT x L0)
 
@@ -272,31 +267,31 @@ def compute_event_features_from_timeseries_model(X,times,*,nbhd_channels,clip_si
     #features=principal_components.transpose() @ all_clips.reshape((M_neigh*clip_size,len(times))) # (F x MT) @ (MT x L) -> (F x L)
     #return features
 
-def compute_templates_from_timeseries_model(X,times,labels,*,nbhd_channels,clip_size,chunk_infos):
+def compute_templates_from_timeseries_model(X, times, labels, *, nbhd_channels, clip_size, chunk_infos, add_end_clip=0):
     # TODO: subsample smartly here
-    padding=clip_size*10
+    padding=(clip_size+add_end_clip)*10
     M0=len(nbhd_channels)
     K=np.max(labels) if labels.size > 0 else 0
-    template_sums=np.zeros((M0,clip_size,K),dtype='float64')
-    template_counts=np.zeros(K,dtype='float64')
+    template_sums=np.zeros((M0, clip_size+add_end_clip, K), dtype='float64')
+    template_counts=np.zeros(K, dtype='float64')
     for ii in range(len(chunk_infos)):
         chunk0=chunk_infos[ii]
-        X0=X.getChunk(t1=chunk0['t1']-padding,t2=chunk0['t2']+padding,channels=nbhd_channels)
+        X0=X.getChunk(t1=chunk0['t1']-padding, t2=chunk0['t2']+padding, channels=nbhd_channels)
         inds0=np.where((chunk0['t1']<=times)&(times<chunk0['t2']))[0]
         times0=times[inds0]
         labels0=labels[inds0]
-        clips0=extract_clips(X0,times=times0-(chunk0['t1']-padding),clip_size=clip_size)
+        clips0=extract_clips(X0, times=times0-(chunk0['t1']-padding), clip_size=clip_size, add_end_clip=add_end_clip)
 
         for k in range(K):
             inds_k=np.where(labels0==(k+1))[0]
             if len(inds_k)>0:
                 template_counts[k]+=len(inds_k)
-                template_sums[:,:,k]+=np.sum(clips0[:,:,inds_k],axis=2).reshape((M0,clip_size))
+                template_sums[:, :, k]+=np.sum(clips0[:, :, inds_k], axis=2).reshape((M0, clip_size+add_end_clip))
 
-    templates=np.zeros((M0,clip_size,K))
+    templates=np.zeros((M0, clip_size+add_end_clip, K))
     for k in range(K):
         if template_counts[k]:
-            templates[:,:,k]=template_sums[:,:,k]/template_counts[k]
+            templates[:, :, k]=template_sums[:, :, k]/template_counts[k]
     return templates    
     #N=X.numTimepoints()
     #X_neigh=X.getChunk(t1=0,t2=N,channels=nbhd_channels)
@@ -366,6 +361,7 @@ class _NeighborhoodSorter:
         detect_sign=o['detect_sign']
         detect_threshold=o['detect_threshold']
         num_features=o['num_features']
+        add_end_clip=o['clip_size']
         # num_features=10
         geom=self._geom
         if geom is None:
@@ -414,8 +410,13 @@ class _NeighborhoodSorter:
                 if self._sorting_opts['verbose']:
                     print('No duplicate events found for channel {} in {}'.format(self._central_channel,mode))
         #times=np.sort(times)
-        features = compute_event_features_from_timeseries_model(X,times,nbhd_channels=nbhd_channels,clip_size=clip_size,max_num_clips_for_pca=max_num_clips_for_pca,num_features=num_features*2,chunk_infos=chunk_infos)
-        
+        features = compute_event_features_from_timeseries_model(X, times, 
+                                                                nbhd_channels=nbhd_channels, 
+                                                                clip_size=clip_size, 
+                                                                max_num_clips_for_pca=max_num_clips_for_pca, 
+                                                                num_features=num_features*2, 
+                                                                chunk_infos=chunk_infos,
+                                                                add_end_clip=add_end_clip)        
         # The clustering
         if self._sorting_opts['verbose']:
             print ('Clustering for channel {} ({})...'.format(m_central+1,mode)); sys.stdout.flush()
@@ -615,8 +616,8 @@ class MountainSort4:
         self._temporary_directory=None
         self._num_workers=0
         self._recording=None
-    def setSortingOpts(self,clip_size=None,adjacency_radius=None,detect_sign=None,detect_interval=None,
-                       detect_threshold=None,num_features=None,max_num_clips_for_pca=None, verbose=True):
+    def setSortingOpts(self, clip_size=None, adjacency_radius=None, detect_sign=None, detect_interval=None, 
+                       detect_threshold=None, num_features=None, max_num_clips_for_pca=None, verbose=True, add_end_clip=None):
         if clip_size is not None:
             self._sorting_opts['clip_size']=clip_size
         if adjacency_radius is not None:
@@ -633,6 +634,8 @@ class MountainSort4:
             self._sorting_opts['max_num_clips_for_pca']=max_num_clips_for_pca
         if verbose is not None:
             self._sorting_opts['verbose']=verbose
+        if add_end_clip is not None:
+            self._sorting_opts['add_end_clip']=add_end_clip
     def setRecording(self,recording):
         self._recording=recording
     def setTimeseriesPath(self,path):
