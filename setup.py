@@ -33,7 +33,7 @@ setuptools.setup(
         'numpy',
         'mountainlab_pytools',
         'h5py',
-        'sklearn',
+        'scikit-learn',
         'spikeextractors>=0.4.1'
     ],
     classifiers=(

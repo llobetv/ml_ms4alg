@@ -566,7 +566,7 @@ def prepare_timeseries_hdf5_from_recording(recording,timeseries_hdf5_fname,*,chu
             # determine aa so that t1-s1+aa = padding
             # so, aa = padding-(t1-s1)
             aa = padding-(t1-s1)
-            padded_chunk[:,aa:aa+s2-s1]=recording.get_traces(start_frame=s1,end_frame=s2) # Read the padded chunk
+            padded_chunk[:,aa:aa+s2-s1]=recording.get_traces(start_frame=s1,end_frame=s2).T # Read the padded chunk
 
             for m in range(M):
                 f.create_dataset('part-{}-{}'.format(m,j),data=padded_chunk[m,:].ravel())

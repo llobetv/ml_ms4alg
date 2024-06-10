@@ -6,7 +6,7 @@ import numpy as np
 import multiprocessing
 import spikeextractors as se
 
-def mountainsort4(*,recording,detect_sign,clip_size=50,adjacency_radius=-1,detect_threshold=3,detect_interval=10,
+def mountainsort4(recording,detect_sign=0,clip_size=50,adjacency_radius=-1,detect_threshold=3,detect_interval=10,
                   num_workers=None,verbose=True,add_end_clip=0):
   if num_workers is None:
     num_workers=int((multiprocessing.cpu_count()+1)/2)
@@ -27,7 +27,7 @@ def mountainsort4(*,recording,detect_sign,clip_size=50,adjacency_radius=-1,detec
     verbose=verbose,
     add_end_clip=add_end_clip,
   )
-  tmpdir = tempfile.mkdtemp(dir=os.environ.get('TEMPDIR','/tmp'))
+  tmpdir = tempfile.mkdtemp(dir=os.environ.get('ML_PROCESSOR_TEMPDIR','/tmp'))
   MS4.setNumWorkers(num_workers)
   if verbose:
     print('Using tmpdir: '+tmpdir)
